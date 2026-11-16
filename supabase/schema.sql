@@ -51,22 +51,26 @@ alter table public.community_members enable row level security;
 alter table public.channels enable row level security;
 alter table public.messages enable row level security;
 
+create or replace function public.is_community_member(target_community uuid)
+returns boolean language sql stable security definer set search_path = public
+as $ select exists (select 1 from public.community_members m where m.community_id = target_community and m.user_id = auth.uid()) $;
+
 create policy "profiles readable by signed-in users" on public.profiles for select to authenticated using (true);
 create policy "users insert own profile" on public.profiles for insert to authenticated with check (id = auth.uid());
 create policy "users update own profile" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
-create policy "public communities visible; private members only" on public.communities for select to authenticated using (is_public or owner_id = auth.uid() or exists (select 1 from public.community_members m where m.community_id = id and m.user_id = auth.uid()));
+create policy "public communities visible; private members only" on public.communities for select to authenticated using (is_public or owner_id = auth.uid() or public.is_community_member(id));
 create policy "authenticated users create communities" on public.communities for insert to authenticated with check (owner_id = auth.uid());
 create policy "owners update communities" on public.communities for update to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owners delete communities" on public.communities for delete to authenticated using (owner_id = auth.uid());
 
-create policy "members visible to community members" on public.community_members for select to authenticated using (exists (select 1 from public.community_members mine where mine.community_id = community_id and mine.user_id = auth.uid()));
+create policy "members visible to community members" on public.community_members for select to authenticated using (public.is_community_member(community_members.community_id));
 create policy "users join public communities" on public.community_members for insert to authenticated with check (user_id = auth.uid() and exists (select 1 from public.communities c where c.id = community_id and c.is_public));
 create policy "users leave own membership" on public.community_members for delete to authenticated using (user_id = auth.uid());
 
-create policy "channels visible to members or public communities" on public.channels for select to authenticated using (exists (select 1 from public.communities c where c.id = community_id and (c.is_public or exists (select 1 from public.community_members m where m.community_id = c.id and m.user_id = auth.uid()))));
-create policy "community owners and moderators create channels" on public.channels for insert to authenticated with check (created_by = auth.uid() and exists (select 1 from public.community_members m where m.community_id = community_id and m.user_id = auth.uid() and m.role in ('owner','moderator')));
-create policy "community owners manage channels" on public.channels for delete to authenticated using (exists (select 1 from public.community_members m where m.community_id = community_id and m.user_id = auth.uid() and m.role = 'owner'));
+create policy "channels visible to members or public communities" on public.channels for select to authenticated using (exists (select 1 from public.communities c where c.id = community_id and (c.is_public or public.is_community_member(c.id))));
+create policy "community owners and moderators create channels" on public.channels for insert to authenticated with check (created_by = auth.uid() and exists (select 1 from public.community_members m where m.community_id = channels.community_id and m.user_id = auth.uid() and m.role in ('owner','moderator')));
+create policy "community owners manage channels" on public.channels for delete to authenticated using (exists (select 1 from public.community_members m where m.community_id = channels.community_id and m.user_id = auth.uid() and m.role = 'owner'));
 
 create policy "messages visible to channel community members" on public.messages for select to authenticated using (exists (select 1 from public.channels ch join public.communities c on c.id = ch.community_id where ch.id = channel_id and (c.is_public or exists (select 1 from public.community_members m where m.community_id = c.id and m.user_id = auth.uid()))));
 create policy "members send messages" on public.messages for insert to authenticated with check (author_id = auth.uid() and exists (select 1 from public.channels ch join public.communities c on c.id = ch.community_id where ch.id = channel_id and (c.is_public or exists (select 1 from public.community_members m where m.community_id = c.id and m.user_id = auth.uid()))));
