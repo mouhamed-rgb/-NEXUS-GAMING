@@ -33,6 +33,20 @@ jobs:
       - name: Install dependencies
         working-directory: app
         run: flutter pub get
+      - name: Disable unstable Android lint tasks
+        working-directory: app
+        run: |
+          cat >> android/build.gradle <<'GRADLE'
+
+          // Work around an upstream Android Lint crash in dependency analysis.
+          subprojects {
+              tasks.configureEach {
+                  if (name.toLowerCase().contains("lint")) {
+                      enabled = false
+                  }
+              }
+          }
+          GRADLE
       - name: Build release APK
         working-directory: app
         run: flutter build apk --release
