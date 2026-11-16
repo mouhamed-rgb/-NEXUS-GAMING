@@ -55,7 +55,7 @@ class _HomePageState extends State<HomePage> {
   int selected = 0;
   final groups = const [
     ('VALORANT HUB', 'تكتيكات • مباريات • دردشة', Icons.gps_fixed, cyan),
-    ('MINECRAFT WORLD', 'بناء • سيرفرات • فعاليات', Icons.cube_outlined, violet),
+    ('MINECRAFT WORLD', 'بناء • سيرفرات • فعاليات', Icons.view_in_ar, violet),
     ('FORTNITE SQUAD', 'بحث عن فريق • تحديات', Icons.sports_esports, Color(0xFFFF65B5)),
   ];
 
