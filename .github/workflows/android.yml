@@ -17,28 +17,48 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
       - name: Generate Android platform files
         working-directory: app
         run: flutter create --platforms=android --org com.nexusgaming .
+
       - name: Install dependencies
         working-directory: app
         run: flutter pub get
-      - name: Disable unstable Android lint tasks
-        working-directory: app
-        run: |
-          cat >> android/build.gradle <<'GRADLE'
 
-          // Work around an upstream Android Lint crash in dependency analysis.
+      - name: Disable crashing Android lint analysis (Kotlin DSL)
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f android/build.gradle.kts ]; then
+            cat >> android/build.gradle.kts <<'KOTLIN'
+
+          // CI workaround for the Android Lint parser crash in dependency lint tasks.
+          subprojects {
+              tasks.configureEach {
+                  if (name.contains("lint", ignoreCase = true)) {
+                      enabled = false
+                  }
+              }
+          }
+          KOTLIN
+          elif [ -f android/build.gradle ]; then
+            cat >> android/build.gradle <<'GROOVY'
+
+          // CI workaround for the Android Lint parser crash in dependency lint tasks.
           subprojects {
               tasks.configureEach {
                   if (name.toLowerCase().contains("lint")) {
@@ -46,10 +66,29 @@ jobs:
                   }
               }
           }
-          GRADLE
+          GROOVY
+          else
+            echo "Android root Gradle build file was not generated."
+            exit 1
+          fi
+
       - name: Build release APK
         working-directory: app
-        run: flutter build apk --release
+        run: flutter build apk --release --verbose
+
+      - name: Verify APK exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/app/outputs/flutter-apk/app-release.apk"
+          if [ ! -s "$APK" ]; then
+            echo "APK was not created at $APK"
+            echo "Searching app/build for APK files:"
+            find app/build -type f -name "*.apk" -print || true
+            exit 1
+          fi
+          ls -lh "$APK"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
